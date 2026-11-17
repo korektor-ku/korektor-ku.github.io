@@ -79,38 +79,53 @@ function run(src) {
     $('#busy').classList.add('hidden');
   }, 60);
 }
-const order = p => {
-  const s = p.map(q => q[0] + q[1]), d = p.map(q => q[1] - q[0]);
-  return [p[s.indexOf(Math.min(...s))], p[d.indexOf(Math.min(...d))], p[s.indexOf(Math.max(...s))], p[d.indexOf(Math.max(...d))]];
-};
+/* Deteksi otomatis 5 tabel: 4 tabel sejajar (No. 1-40) + 1 tabel Benar-Salah di kiri bawah */
+function orderCorners(pts) {   // -> [Top-Left, Top-Right, Bottom-Right, Bottom-Left]
+  pts.sort((a, b) => a.y - b.y);
+  const top = pts.slice(0, 2).sort((a, b) => a.x - b.x), bottom = pts.slice(2, 4).sort((a, b) => a.x - b.x);
+  return [top[0], top[1], bottom[1], bottom[0]];
+}
+function autoDetectTables(binaryMat, imgWidth, imgHeight) {   // binaryMat: garis putih di latar hitam (THRESH_BINARY_INV)
+  const imgArea = imgWidth * imgHeight;
+  const closed = new cv.Mat(), kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+  cv.morphologyEx(binaryMat, closed, cv.MORPH_CLOSE, kernel);          // 1. tambal garis tabel yang putus-putus
+  const contours = new cv.MatVector(), hierarchy = new cv.Mat();
+  cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);  // hanya kontur terluar
+  const boxes = [];
+  for (let i = 0; i < contours.size(); i++) {
+    const cnt = contours.get(i), area = cv.contourArea(cnt);
+    if (area >= imgArea * 0.02 && area <= imgArea * 0.15) {            // 2. buang sel kecil (<2%) & bingkai kertas (>15%)
+      const rect = cv.boundingRect(cnt), ar = rect.width / rect.height;
+      if (rect.y >= imgHeight * 0.25 && ar >= 0.4 && ar <= 1.45) {     // 3. abaikan header (y<25%); 4. rasio tabel
+        const hull = new cv.Mat(), approx = new cv.Mat();
+        cv.convexHull(cnt, hull);                                      // coretan pulpen di luar garis tidak merusak bentuk
+        cv.approxPolyDP(hull, approx, 0.035 * cv.arcLength(hull, true), true);
+        if (approx.rows === 4) {
+          const pts = []; for (let j = 0; j < 4; j++) pts.push({ x: approx.data32S[j * 2], y: approx.data32S[j * 2 + 1] });
+          boxes.push({ rect, area, points: orderCorners(pts) });
+        }
+        hull.delete(); approx.delete();
+      }
+    }
+    cnt.delete();
+  }
+  closed.delete(); kernel.delete(); contours.delete(); hierarchy.delete();
+  if (boxes.length > 5) boxes.sort((a, b) => b.area - a.area).length = 5;   // kelebihan kandidat: ambil 5 terbesar
+  if (boxes.length === 5) {                                            // 5. urutkan: 4 tabel atas (kiri→kanan) + 1 tabel bawah
+    boxes.sort((a, b) => a.rect.y - b.rect.y);
+    const top4 = boxes.slice(0, 4).sort((a, b) => a.rect.x - b.rect.x);
+    return [...top4, boxes[4]];                                        // [1-10, 11-20, 21-30, 31-40, B/S]
+  }
+  return null;                                                         // belum 5 tabel -> fallback manual
+}
 function detect(src) {
-  const m = cv.imread(src), g = new cv.Mat(), b = new cv.Mat(), t = new cv.Mat(), k = cv.Mat.ones(3, 3, cv.CV_8U), cs = new cv.MatVector(), h = new cv.Mat();
+  const m = cv.imread(src), g = new cv.Mat(), b = new cv.Mat(), bin = new cv.Mat();
   cv.cvtColor(m, g, cv.COLOR_RGBA2GRAY);
   cv.GaussianBlur(g, b, new cv.Size(5, 5), 0);
-  cv.adaptiveThreshold(b, t, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, S.cfg.C);
-  cv.dilate(t, t, k);
-  cv.findContours(t, cs, h, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-  const W = g.cols, H = g.rows, minA = W * H * 0.012, maxA = W * H * 0.25, L = [];
-  for (let i = 0; i < cs.size(); i++) {
-    const c = cs.get(i), a = cv.contourArea(c);
-    if (a > minA && a < maxA) {
-      const ap = new cv.Mat(); cv.approxPolyDP(c, ap, 0.02 * cv.arcLength(c, true), true);
-      if (ap.rows === 4 && cv.isContourConvex(ap)) {
-        const p = []; for (let j = 0; j < 4; j++) p.push([ap.data32S[j * 2], ap.data32S[j * 2 + 1]]);
-        const xs = p.map(q => q[0]), ys = p.map(q => q[1]);
-        L.push({ p: order(p), a, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), cx: (Math.min(...xs) + Math.max(...xs)) / 2, cy: (Math.min(...ys) + Math.max(...ys)) / 2 });
-      }
-      ap.delete();
-    }
-    c.delete();
-  }
-  [m, g, b, t, k, cs, h].forEach(x => x.delete());
-  L.sort((x, y) => y.a - x.a);
-  const K = []; // buang kontur ganda (tepi luar & dalam garis tabel)
-  L.forEach(o => { if (!K.some(q => Math.hypot(q.cx - o.cx, q.cy - o.cy) < 0.3 * Math.min(q.w, o.w))) K.push(o) });
-  const tall = K.filter(o => o.h / o.w > 1.6 && o.h / o.w < 2.8).slice(0, 4).sort((x, y) => x.cx - y.cx);
-  const bs = K.filter(o => o.h / o.w > 0.55 && o.h / o.w < 1.3 && o.cy > H * 0.55).sort((x, y) => y.cy - x.cy)[0];
-  return tall.length === 4 && bs ? [...tall.map(o => o.p), bs.p] : null;
+  cv.adaptiveThreshold(b, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, S.cfg.C);
+  const res = autoDetectTables(bin, g.cols, g.rows);
+  [m, g, b, bin].forEach(x => x.delete());
+  return res ? res.map(o => o.points.map(q => [q.x, q.y])) : null;
 }
 function finish(src, quads) {
   const m = cv.imread(src), g = new cv.Mat(); cv.cvtColor(m, g, cv.COLOR_RGBA2GRAY); m.delete();
