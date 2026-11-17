@@ -4,7 +4,7 @@ const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAl
 const LSg = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d } catch { return d } };
 const LSs = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 /* >>> PASTE URL WEB APP (hasil deploy Apps Script, berakhiran /exec) DI SINI <<< */
-const GAS_URL = 'PASTE_URL_WEB_APP_DI_SINI';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwxLy0SpV5EoRH5_gLG5Nd-O1Xs-VMaeSg2dX0GELWZ8H1w12SWI-WJvClgQvIIwy9g/exec';
 const HAS_URL = /^https:\/\/script\.google\.com\/.+\/exec$/.test(GAS_URL.trim());
 const DEF = { empty: 15, vmin: 18, vmax: 48, cancel: 50, pad: 15, padBS: 6, C: 16 };
 const S = {
