@@ -22,7 +22,7 @@ function toast(msg, t = 'ok') {
   d.className = `${c} text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-lg transition-all duration-300 opacity-0 -translate-y-2`;
   d.textContent = msg; $('#toasts').append(d);
   requestAnimationFrame(() => d.classList.remove('opacity-0', '-translate-y-2'));
-  setTimeout(() => { d.classList.add('opacity-0'); setTimeout(() => d.remove(), 300) }, 3000);
+  setTimeout(() => { d.classList.add('opacity-0'); setTimeout(() => d.remove(), 300) }, t === 'err' ? 7000 : 3000);
 }
 function status() {
   const set = (id, cls, txt) => { const e = $(id); e.className = 'pill ' + cls; e.querySelector('span').textContent = txt };
@@ -297,23 +297,32 @@ $('#btnUrl').onclick = () => {
 };
 $('#btnCfg').onclick = () => { FIELDS.forEach(([k]) => S.cfg[k] = +$('#cfg_' + k).value || DEF[k]); save(); toast('Kalibrasi disimpan') };
 $('#btnReset').onclick = () => { if (confirm('Hapus SEMUA hasil lokal (termasuk antrean belum terkirim)?')) { S.hasil = []; save(); status(); toast('Data lokal dihapus', 'info') } };
-$('#btnPull').onclick = pull; $('#btnSync').onclick = () => sync(); $('#btnSyncR').onclick = () => sync();
+$('#btnPull').onclick = () => pull();
+$('#btnTest').onclick = async () => { try { const j = await api(); toast(`Koneksi OK: ${j.siswa.length} siswa, ${j.kunci.length} butir kunci`) } catch (e) { toast(e.message, 'err') } }; $('#btnSync').onclick = () => sync(); $('#btnSyncR').onclick = () => sync();
 
 /* ===== Sinkronisasi ===== */
-async function pull() {
+async function api(opt) {
+  let r;
+  try { r = await fetch(S.url, { redirect: 'follow', cache: 'no-store', credentials: 'omit', ...opt }) }
+  catch (e) { throw new Error(navigator.onLine ? 'Server tidak terjangkau. Cek deployment Apps Script: Execute as "Me" + akses "Anyone", lalu buka URL /exec di tab incognito.' : 'Perangkat sedang offline') }
+  const t = await r.text(); let j;
+  try { j = JSON.parse(t) } catch { throw new Error('Respons bukan JSON — deployment belum publik / belum diizinkan / URL salah') }
+  if (j.status !== 'success') throw new Error(j.message || 'Ditolak server');
+  return j;
+}
+async function pull(silent) {
   if (!S.url) return toast('Atur URL Web App dulu', 'warn');
   try {
-    const j = await (await fetch(S.url)).json(); if (j.status !== 'success') throw new Error(j.message || 'Respons tidak valid');
+    const j = await api();
     S.siswa = j.siswa; S.kunci = j.kunci; if (!exams().includes(S.exam)) S.exam = exams()[0] || '';
-    save(); fillExam(); toast(`Dimuat: ${j.siswa.length} siswa, ${j.kunci.length} butir kunci`);
+    save(); fillExam(); renderKunci(); if (silent !== true) toast(`Dimuat: ${j.siswa.length} siswa, ${j.kunci.length} butir kunci`);
   } catch (e) { toast('Gagal memuat: ' + e.message, 'err') }
 }
 async function sync(silent) {
   if (!S.url) return silent || toast('Atur URL Web App dulu', 'warn');
   const p = S.hasil.filter(h => !h.synced); if (!p.length) return silent || toast('Tidak ada antrean', 'info');
   try {
-    const r = await fetch(S.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveResults', data: p.map(({ synced, ...x }) => x) }) });
-    const j = await r.json(); if (j.status !== 'success') throw new Error(j.message || 'Ditolak server');
+    const j = await api({ method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveResults', data: p.map(({ synced, ...x }) => x) }) });
     p.forEach(h => h.synced = true); save(); toast(`${j.saved} data tersinkron`);
   } catch (e) { toast('Sinkronisasi gagal: ' + e.message, 'err') }
   status(); renderRekap();
@@ -324,4 +333,4 @@ window.addEventListener('online', () => { status(); sync(true) }); window.addEve
 const iv = setInterval(() => { if (window.cv && cv.Mat) { S.cv = true; status(); clearInterval(iv) } }, 400);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(console.warn);
 fillExam(); status(); tab('scan');
-if (S.url && navigator.onLine && !S.kunci.length) pull();   // pertama kali dibuka: otomatis muat siswa & kunci
+if (S.url && navigator.onLine) pull(true);   // pertama kali dibuka: otomatis muat siswa & kunci
