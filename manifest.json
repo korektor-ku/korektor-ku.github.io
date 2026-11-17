@@ -2,6 +2,7 @@
   "name": "Scan LJK – Koreksi Otomatis",
   "short_name": "Scan LJK",
   "description": "Pemindai & pengoreksi Lembar Jawab Ujian otomatis",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
