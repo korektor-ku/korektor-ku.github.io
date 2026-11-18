@@ -80,8 +80,17 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
   <section data-sec="rekap" class="hidden">
     <div class="flex items-center justify-between mb-3"><h2 class="font-extrabold text-xl">Rekap Nilai</h2>
       <button id="btnSyncR" class="btn bg-indigo-600 text-white text-sm flex items-center gap-2"><i data-lucide="cloud-upload" class="w-4 h-4"></i>Sinkronkan</button></div>
-    <div id="rStat" class="grid grid-cols-3 gap-2 mb-4"></div>
-    <div id="rList" class="space-y-2"></div>
+    <div id="rStat" class="grid grid-cols-3 gap-2 mb-3"></div>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <select id="rExam" class="inp text-sm flex-1 min-w-[140px]"></select>
+      <button id="btnXlsx" class="btn bg-emerald-50 text-emerald-700 text-sm flex items-center gap-2"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>Excel</button>
+      <button id="btnPdf" class="btn bg-rose-50 text-rose-600 text-sm flex items-center gap-2"><i data-lucide="file-text" class="w-4 h-4"></i>PDF</button>
+    </div>
+    <div id="rList"></div>
+    <div class="flex flex-wrap gap-2 text-[11px] font-bold mt-3">
+      <span class="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700">Benar</span><span class="px-2 py-1 rounded-lg bg-rose-50 text-rose-600">Salah</span>
+      <span class="px-2 py-1 rounded-lg bg-amber-50 text-amber-600">Sebagian (PGK)</span><span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-400">- Kosong</span>
+    </div>
   </section>
 
   <!-- 4. PENGATURAN -->
@@ -152,6 +161,9 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
 
 <div id="toasts" class="fixed top-16 inset-x-4 max-w-md mx-auto z-[60] space-y-2 pointer-events-none"></div>
 
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <script async src="https://docs.opencv.org/4.8.0/opencv.js"></script>
 <script src="./app.js"></script>
 </body>
