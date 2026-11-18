@@ -6,12 +6,12 @@ const LSs = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 /* >>> PASTE URL WEB APP (hasil deploy Apps Script, berakhiran /exec) DI SINI <<< */
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwBcPE3HXwiBnRm-NsfmTENyOZG5Z9uCQDdfio_ZiGohApO81lZ14xdk9v9VuAdYkbg-Q/exec';
 const HAS_URL = /^https:\/\/script\.google\.com\/.+\/exec$/.test(GAS_URL.trim());
-const DEF = { empty: 15, vmin: 18, vmax: 48, cancel: 50, pad: 15, padBS: 6, C: 16 };
+const DEF = { vmin: 17, vmax: 48, cancel: 50, pad: 10, bsMin: 4, C: 20, Cbs: 10, Cd: 8 };   // hasil kalibrasi pada foto LJK contoh
 const S = {
   url: HAS_URL ? GAS_URL.trim() : LSg('ljk_url', ''), siswa: LSg('ljk_siswa', []), kunci: LSg('ljk_kunci', []), hasil: LSg('ljk_hasil', []),
-  cfg: { ...DEF, ...LSg('ljk_cfg', {}) }, exam: LSg('ljk_exam', ''), cv: false, stream: null, cur: null, man: null
+  cfg: { ...DEF, ...LSg('ljk_cfg2', {}) }, exam: LSg('ljk_exam', ''), cv: false, stream: null, cur: null, man: null
 };
-const save = () => { LSs('ljk_siswa', S.siswa); LSs('ljk_kunci', S.kunci); LSs('ljk_hasil', S.hasil); LSs('ljk_cfg', S.cfg); LSs('ljk_url', S.url); LSs('ljk_exam', S.exam) };
+const save = () => { LSs('ljk_siswa', S.siswa); LSs('ljk_kunci', S.kunci); LSs('ljk_hasil', S.hasil); LSs('ljk_cfg2', S.cfg); LSs('ljk_url', S.url); LSs('ljk_exam', S.exam) };
 const icons = () => window.lucide && lucide.createIcons();
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const exams = () => [...new Set(S.kunci.map(k => k.ID_Ujian))];
@@ -85,9 +85,10 @@ function orderCorners(pts) {   // -> [Top-Left, Top-Right, Bottom-Right, Bottom-
   const top = pts.slice(0, 2).sort((a, b) => a.x - b.x), bottom = pts.slice(2, 4).sort((a, b) => a.x - b.x);
   return [top[0], top[1], bottom[1], bottom[0]];
 }
-function autoDetectTables(binaryMat, imgWidth, imgHeight) {   // binaryMat: garis putih di latar hitam (THRESH_BINARY_INV)
-  const imgArea = imgWidth * imgHeight;
-  const closed = new cv.Mat(), kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+// binaryMat = topeng GARIS tabel (putih di latar hitam), lihat detect()
+function autoDetectTables(binaryMat, imgWidth, imgHeight) {
+  const imgArea = imgWidth * imgHeight, ks = Math.max(5, Math.round(imgWidth * 0.0085)) | 1;
+  const closed = new cv.Mat(), kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(ks, ks));
   cv.morphologyEx(binaryMat, closed, cv.MORPH_CLOSE, kernel);          // 1. tambal garis tabel yang putus-putus
   const contours = new cv.MatVector(), hierarchy = new cv.Mat();
   cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);  // hanya kontur terluar
@@ -98,7 +99,7 @@ function autoDetectTables(binaryMat, imgWidth, imgHeight) {   // binaryMat: gari
       const rect = cv.boundingRect(cnt), ar = rect.width / rect.height;
       if (rect.y >= imgHeight * 0.25 && ar >= 0.4 && ar <= 1.45) {     // 3. abaikan header (y<25%); 4. rasio tabel
         const hull = new cv.Mat(), approx = new cv.Mat();
-        cv.convexHull(cnt, hull);                                      // coretan pulpen di luar garis tidak merusak bentuk
+        cv.convexHull(cnt, hull);                                      // coretan di luar garis tidak merusak bentuk
         cv.approxPolyDP(hull, approx, 0.035 * cv.arcLength(hull, true), true);
         if (approx.rows === 4) {
           const pts = []; for (let j = 0; j < 4; j++) pts.push({ x: approx.data32S[j * 2], y: approx.data32S[j * 2 + 1] });
@@ -119,13 +120,20 @@ function autoDetectTables(binaryMat, imgWidth, imgHeight) {   // binaryMat: gari
   return null;                                                         // belum 5 tabel -> fallback manual
 }
 function detect(src) {
-  const m = cv.imread(src), g = new cv.Mat(), b = new cv.Mat(), bin = new cv.Mat();
-  cv.cvtColor(m, g, cv.COLOR_RGBA2GRAY);
-  cv.GaussianBlur(g, b, new cv.Size(5, 5), 0);
-  cv.adaptiveThreshold(b, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 31, S.cfg.C);
-  const res = autoDetectTables(bin, g.cols, g.rows);
-  [m, g, b, bin].forEach(x => x.delete());
-  return res ? res.map(o => o.points.map(q => [q.x, q.y])) : null;
+  // Kerja di lebar 1280px agar parameter konsisten untuk foto berukuran berapa pun
+  const m = cv.imread(src), g0 = new cv.Mat(), g = new cv.Mat(), b = new cv.Mat(), bin = new cv.Mat(), hl = new cv.Mat(), vl = new cv.Mat(), grid = new cv.Mat();
+  cv.cvtColor(m, g0, cv.COLOR_RGBA2GRAY);
+  const W = 1280, sc = W / g0.cols, H = Math.round(g0.rows * sc);
+  cv.resize(g0, g, new cv.Size(W, H), 0, 0, cv.INTER_AREA);
+  cv.GaussianBlur(g, b, new cv.Size(3, 3), 0);
+  cv.adaptiveThreshold(b, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, Math.round(W * 0.043) | 1, S.cfg.Cd);
+  // Garis tabel foto kopi sering putus & tipis: ambil hanya garis horizontal/vertikal, abaikan tulisan & coretan
+  const kh = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(Math.floor(W * 0.015), 1));
+  const kv = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(1, Math.floor(H * 0.008)));
+  cv.morphologyEx(bin, hl, cv.MORPH_OPEN, kh); cv.morphologyEx(bin, vl, cv.MORPH_OPEN, kv); cv.bitwise_or(hl, vl, grid);
+  const res = autoDetectTables(grid, W, H);
+  [m, g0, g, b, bin, hl, vl, grid, kh, kv].forEach(x => x.delete());
+  return res ? res.map(o => o.points.map(q => [q.x / sc, q.y / sc])) : null;
 }
 function finish(src, quads) {
   const m = cv.imread(src), g = new cv.Mat(); cv.cvtColor(m, g, cv.COLOR_RGBA2GRAY); m.delete();
@@ -143,16 +151,29 @@ function finish(src, quads) {
   S.cur = { src, quads, ans, bases };
   openSheet();
 }
+/* Geometri LJK (pecahan dari ukuran tabel hasil warp). Baris header tabel lebih pendek dari baris soal. */
+const GEO = { pg: { hdr: 0.072, row: 0.0928, no: 0.223 }, bs: { hdr: 0.214, row: 0.157, no: 0.2 } };
+function cell(t, r, c) {   // r, c mulai dari 1 (di luar header & kolom No) -> pecahan 0..1
+  const g = t === 4 ? GEO.bs : GEO.pg, cw = (1 - g.no) / (t === 4 ? 2 : 4);
+  return { x: g.no + (c - 1) * cw, y: g.hdr + (r - 1) * g.row, w: cw, h: g.row };
+}
 function readTable(o, t, ans) {
-  const bs = t === 4, rows = bs ? 6 : 11, cols = bs ? 3 : 5, w = o.cols, h = o.rows, cw = w / cols, ch = h / rows;
-  const p = (bs ? S.cfg.padBS : S.cfg.pad) / 100, b = new cv.Mat(), th = new cv.Mat();
+  const bs = t === 4, w = o.cols, h = o.rows, b = new cv.Mat(), th = new cv.Mat();
   cv.GaussianBlur(o, b, new cv.Size(3, 3), 0);
-  cv.adaptiveThreshold(b, th, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 25, S.cfg.C);
-  for (let r = 1; r < rows; r++) {          // baris 0 = header
+  cv.adaptiveThreshold(b, th, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 41, bs ? S.cfg.Cbs : S.cfg.C);
+  const ratio = (x, y, ww, hh) => {
+    x = Math.max(0, Math.round(x)); y = Math.max(0, Math.round(y)); ww = Math.min(w - x, Math.round(ww)); hh = Math.min(h - y, Math.round(hh));
+    const roi = th.roi(new cv.Rect(x, y, ww, hh)), v = cv.countNonZero(roi) / (ww * hh); roi.delete(); return v;
+  };
+  const n = bs ? 5 : 10, m = bs ? 2 : 4, p = S.cfg.pad / 100;
+  for (let r = 1; r <= n; r++) {
     const rt = [];
-    for (let c = 1; c < cols; c++) {        // kolom 0 = "No"
-      const x = Math.round(c * cw + cw * p), y = Math.round(r * ch + ch * p), ww = Math.round(cw * (1 - 2 * p)), hh = Math.round(ch * (1 - 2 * p));
-      const roi = th.roi(new cv.Rect(x, y, ww, hh)); rt.push(cv.countNonZero(roi) / (ww * hh)); roi.delete();
+    for (let c = 1; c <= m; c++) {
+      const q = cell(t, r, c);
+      if (bs) {   // lingkaran bolpoin melingkari huruf: ukur pita di kiri & kanan huruf (huruf cetak sendiri tidak ikut terhitung)
+        const cx = (q.x + q.w / 2) * w, cy = (q.y + q.h / 2) * h, a = 0.027 * w, bb = 0.053 * w, dy = 0.025 * h;
+        rt.push((ratio(cx - bb, cy - dy, bb - a, 2 * dy) + ratio(cx + a, cy - dy, bb - a, 2 * dy)) / 2);
+      } else rt.push(ratio((q.x + q.w * p) * w, (q.y + q.h * p) * h, q.w * (1 - 2 * p) * w, q.h * (1 - 2 * p) * h));
     }
     ans[bs ? 40 + r : t * 10 + r] = classify(rt, bs ? 'BS' : t < 2 ? 'PG' : 'PGK');
   }
@@ -162,8 +183,8 @@ function classify(rt, type) {
   const L = type === 'BS' ? ['B', 'S'] : ['A', 'B', 'C', 'D'], c = S.cfg, mn = c.vmin / 100, mx = c.vmax / 100, cn = c.cancel / 100;
   let sel = [], doubt = false;
   if (type === 'BS') {                       // lingkaran pada B atau S
-    const i = rt[0] >= rt[1] ? 0 : 1, m = rt[i], o = rt[1 - i];
-    if (m >= mn) { sel = [L[i]]; if (m - o < 0.06) doubt = true }
+    const i = rt[0] >= rt[1] ? 0 : 1, m = rt[i], o = rt[1 - i], bm = c.bsMin / 100;
+    if (m >= bm) { sel = [L[i]]; if (o >= bm) doubt = true }   // kedua huruf ada tanda -> ragu
   } else {
     const v = rt.map((r, i) => r >= mn && r <= mx ? i : -1).filter(i => i >= 0);   // silang valid 18–48%
     if (type === 'PG' && v.length > 1) { v.sort((a, b) => rt[b] - rt[a]); sel = [L[v[0]]]; doubt = true }
@@ -203,21 +224,23 @@ function renderTables() {
   });
 }
 function draw(t) {
-  const c = S.cur['c' + t], x = c.getContext('2d'), bs = t === 4, rows = bs ? 6 : 11, cols = bs ? 3 : 5, cw = c.width / cols, ch = c.height / rows;
+  const c = S.cur['c' + t], x = c.getContext('2d'), bs = t === 4, n = bs ? 5 : 10;
   x.drawImage(S.cur.bases[t], 0, 0); x.lineWidth = 3;
-  for (let r = 1; r < rows; r++) {
+  for (let r = 1; r <= n; r++) {
     const a = S.cur.ans[bs ? 40 + r : t * 10 + r];
     a.L.forEach((l, i) => {
-      const X = (i + 1) * cw + 4, Y = r * ch + 4, w = cw - 8, h = ch - 8, on = a.sel.includes(l), cn = !on && a.rt[i] > S.cfg.cancel / 100;
+      const q = cell(t, r, i + 1), X = q.x * c.width + 3, Y = q.y * c.height + 3, w = q.w * c.width - 6, h = q.h * c.height - 6;
+      const on = a.sel.includes(l), cn = !bs && !on && a.rt[i] > S.cfg.cancel / 100;
       if (on) { x.fillStyle = a.doubt ? 'rgba(245,158,11,.4)' : 'rgba(16,185,129,.4)'; x.strokeStyle = a.doubt ? '#F59E0B' : '#10B981'; x.fillRect(X, Y, w, h); x.strokeRect(X, Y, w, h) }
       else if (cn) { x.strokeStyle = '#F59E0B'; x.setLineDash([6, 4]); x.strokeRect(X, Y, w, h); x.setLineDash([]) }
     });
   }
 }
 function tap(e, t, c) {
-  const r0 = c.getBoundingClientRect(), bs = t === 4, rows = bs ? 6 : 11, cols = bs ? 3 : 5;
-  const col = Math.floor((e.clientX - r0.left) / r0.width * cols), row = Math.floor((e.clientY - r0.top) / r0.height * rows);
-  if (row < 1 || col < 1) return;
+  const r0 = c.getBoundingClientRect(), bs = t === 4, g = bs ? GEO.bs : GEO.pg, m = bs ? 2 : 4, n = bs ? 5 : 10;
+  const fx = (e.clientX - r0.left) / r0.width, fy = (e.clientY - r0.top) / r0.height;
+  const row = Math.floor((fy - g.hdr) / g.row) + 1, col = Math.floor((fx - g.no) / ((1 - g.no) / m)) + 1;
+  if (row < 1 || row > n || col < 1 || col > m) return;
   const a = S.cur.ans[bs ? 40 + row : t * 10 + row], l = a.L[col - 1], i = a.sel.indexOf(l);
   if (a.type === 'PGK') { i >= 0 ? a.sel.splice(i, 1) : a.sel.push(l); a.sel.sort() } else a.sel = i >= 0 ? [] : [l];
   a.doubt = false; draw(t); recalc();
@@ -301,7 +324,7 @@ $('#rList').onclick = e => {
   const b = e.target.closest('[data-del]'); if (!b || !confirm('Hapus hasil ini?')) return;
   S.hasil = S.hasil.filter(h => h.id_ujian + '|' + h.nomor_peserta !== b.dataset.del); save(); status(); renderRekap();
 };
-const FIELDS = [['empty', 'Batas kosong (%)'], ['vmin', 'Silang valid min (%)'], ['vmax', 'Silang valid maks (%)'], ['cancel', 'Coretan ralat > (%)'], ['pad', 'Padding PG/PGK (%)'], ['padBS', 'Padding B–S (%)'], ['C', 'Konstanta C']];
+const FIELDS = [['vmin', 'Silang valid min (%)'], ['vmax', 'Silang valid maks (%)'], ['cancel', 'Coretan ralat > (%)'], ['pad', 'Padding PG/PGK (%)'], ['bsMin', 'Lingkaran B/S min (%)'], ['C', 'Konstanta C baca PG'], ['Cbs', 'Konstanta C baca B/S'], ['Cd', 'Konstanta C deteksi tabel']];
 function renderSet() {
   $('#url').value = S.url;
   $('#cfgBox').innerHTML = FIELDS.map(([k, l]) => `<div><label class="text-[11px] font-bold text-slate-500">${l}</label><input id="cfg_${k}" type="number" class="inp mt-1" value="${S.cfg[k]}"></div>`).join('');
