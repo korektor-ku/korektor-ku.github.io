@@ -42,18 +42,63 @@ function tab(n) {
 $$('[data-tab]').forEach(b => b.onclick = () => tab(b.dataset.tab));
 
 /* ===== Kamera & Upload ===== */
+/* ===== Kamera: ketuk untuk fokus, flash (torch), zoom, foto resolusi penuh ===== */
+let camTrack = null, camCap = {};
 async function startCam() {
   if (S.stream) return;
   try {
     S.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-    $('#vid').srcObject = S.stream;
+    $('#vid').srcObject = S.stream; camTrack = S.stream.getVideoTracks()[0]; camInit();
   } catch (e) { toast('Kamera tidak dapat diakses. Gunakan tombol unggah foto.', 'warn') }
 }
-function stopCam() { S.stream && S.stream.getTracks().forEach(t => t.stop()); S.stream = null }
-$('#btnCap').onclick = () => {
+function stopCam() { S.stream && S.stream.getTracks().forEach(t => t.stop()); S.stream = null; camTrack = null; S.torch = false }
+function camInit() {
+  const cap = camCap = (camTrack.getCapabilities && camTrack.getCapabilities()) || {};
+  if ((cap.focusMode || []).includes('continuous')) camTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => { });
+  $('#btnTorch').classList.toggle('hidden', !cap.torch); setTorchIcon(false);
+  const z = $('#zoom');
+  if (cap.zoom && cap.zoom.max > cap.zoom.min) { z.min = cap.zoom.min; z.max = cap.zoom.max; z.step = cap.zoom.step || 0.1; z.value = (camTrack.getSettings().zoom) || cap.zoom.min; z.classList.remove('hidden') }
+  else z.classList.add('hidden');
+}
+function setTorchIcon(on) {
+  const b = $('#btnTorch'); b.innerHTML = `<i data-lucide="${on ? 'zap' : 'zap-off'}" class="w-5 h-5"></i>`;
+  b.classList.toggle('!bg-amber-400', on); b.classList.toggle('!text-slate-900', on); icons();
+}
+$('#btnTorch').onclick = async () => {
+  if (!camTrack) return;
+  try { await camTrack.applyConstraints({ advanced: [{ torch: !S.torch }] }); S.torch = !S.torch; setTorchIcon(S.torch) }
+  catch (e) { toast('Flash tidak dapat dinyalakan di perangkat ini', 'warn') }
+};
+$('#zoom').oninput = e => { camTrack && camTrack.applyConstraints({ advanced: [{ zoom: +e.target.value }] }).catch(() => { }) };
+$('#camBox').addEventListener('click', async e => {   // ketuk layar = fokus di titik itu
+  if (!camTrack || e.target.closest('#btnTorch,#zoom')) return;
+  const box = $('#camBox'), r = box.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, ring = $('#fring');
+  ring.style.left = (x - 32) + 'px'; ring.style.top = (y - 32) + 'px'; ring.classList.remove('hidden', 'fpulse'); void ring.offsetWidth; ring.classList.add('fpulse');
+  clearTimeout(ring._t); ring._t = setTimeout(() => ring.classList.add('hidden'), 1300);
+  const v = $('#vid'), vw = v.videoWidth || r.width, vh = v.videoHeight || r.height, sc = Math.max(r.width / vw, r.height / vh);   // object-cover
+  const px = Math.min(1, Math.max(0, (x + (vw * sc - r.width) / 2) / (vw * sc))), py = Math.min(1, Math.max(0, (y + (vh * sc - r.height) / 2) / (vh * sc)));
+  const modes = camCap.focusMode || [], mode = modes.includes('single-shot') ? 'single-shot' : modes.includes('continuous') ? 'continuous' : null;
+  const tries = [{ ...(mode && { focusMode: mode }), pointsOfInterest: [{ x: px, y: py }] }, ...(mode ? [{ focusMode: mode }] : [])];
+  let ok = false;
+  for (const adv of tries) { try { await camTrack.applyConstraints({ advanced: [adv] }); ok = true; break } catch (_) { } }
+  if (!ok) return S.noFocusMsg || (S.noFocusMsg = 1, toast('Fokus manual tidak didukung perangkat ini — autofokus bawaan tetap aktif', 'info'));
+  if (mode === 'single-shot' && modes.includes('continuous')) setTimeout(() => { camTrack && camTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => { }) }, 2500);
+});
+function blobToCanvas(blob) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => { const s = Math.min(1, 1800 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * s); c.height = Math.round(im.height * s); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(im.src); res(c) };
+    im.onerror = () => rej(new Error('foto tidak terbaca')); im.src = URL.createObjectURL(blob);
+  });
+}
+$('#btnCap').onclick = async () => {
   const v = $('#vid'); if (!v.videoWidth) return toast('Kamera belum siap', 'warn');
-  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
-  c.getContext('2d').drawImage(v, 0, 0); run(c);
+  let c = null;
+  if (camTrack && window.ImageCapture) {   // foto resolusi penuh (lebih tajam untuk OMR); gagal -> ambil dari frame video
+    try { const blob = await Promise.race([new ImageCapture(camTrack).takePhoto(), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 5000))]); c = await blobToCanvas(blob) } catch (e) { c = null }
+  }
+  if (!c) { c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0) }
+  run(c);
 };
 $('#file').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
