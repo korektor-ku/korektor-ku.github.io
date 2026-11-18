@@ -29,6 +29,8 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
 @keyframes sc{0%,100%{top:8%}50%{top:92%}}
 .inp{width:100%;border:1px solid #E2E8F0;border-radius:14px;padding:10px 12px;font-weight:600;background:#fff;outline:none}
 .inp:focus{border-color:#4F46E5;box-shadow:0 0 0 3px #E0E7FF}
+.kb{min-width:46px;height:40px;border-radius:12px;font-weight:700;border:1px solid #E2E8F0;background:#fff;color:#475569}.kb.on{background:#4F46E5;border-color:#4F46E5;color:#fff}
+.btn:disabled{opacity:.4}
 .btn{font-weight:700;border-radius:16px;padding:12px 16px}
 </style>
 </head>
@@ -71,6 +73,11 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
   <section data-sec="kunci" class="hidden">
     <h2 class="font-extrabold text-xl mb-3">Kunci & Soal</h2>
     <select class="examSel inp mb-2"></select>
+    <div class="flex gap-2 mb-3">
+      <button id="kNew" class="btn bg-indigo-600 text-white text-sm flex-1 flex items-center justify-center gap-1"><i data-lucide="plus" class="w-4 h-4"></i>Ujian Baru</button>
+      <button id="kEdit" class="btn bg-indigo-50 text-indigo-700 text-sm flex-1 flex items-center justify-center gap-1"><i data-lucide="pencil" class="w-4 h-4"></i>Ubah Kunci</button>
+      <button id="kDel" class="btn bg-rose-50 text-rose-600 text-sm" aria-label="Hapus ujian"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+    </div>
     <p id="kInfo" class="text-sm text-slate-500 mb-3"></p>
     <div id="kGrid" class="grid grid-cols-5 gap-2"></div>
     <div class="flex gap-2 text-[11px] font-bold mt-4"><span class="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700">PG</span><span class="px-2 py-1 rounded-lg bg-violet-50 text-violet-700">PG Kompleks</span><span class="px-2 py-1 rounded-lg bg-sky-50 text-sky-700">Benar–Salah</span></div>
@@ -85,6 +92,10 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
       <select id="rExam" class="inp text-sm flex-1 min-w-[140px]"></select>
       <button id="btnXlsx" class="btn bg-emerald-50 text-emerald-700 text-sm flex items-center gap-2"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i>Excel</button>
       <button id="btnPdf" class="btn bg-rose-50 text-rose-600 text-sm flex items-center gap-2"><i data-lucide="file-text" class="w-4 h-4"></i>PDF</button>
+    </div>
+    <div class="flex items-center gap-2 mb-3 bg-white rounded-2xl shadow-sm px-3 py-2">
+      <label for="rGuru" class="text-[11px] font-bold text-slate-500 whitespace-nowrap">NAMA GURU</label>
+      <input id="rGuru" type="text" class="inp text-sm !py-1.5" placeholder="Nama guru pengampu (tertulis di Excel & PDF)">
     </div>
     <div class="flex items-center gap-2 mb-3 bg-white rounded-2xl shadow-sm px-3 py-2">
       <label for="rEssayMax" class="text-[11px] font-bold text-slate-500 whitespace-nowrap">SKOR MAKS ESSAY</label>
@@ -154,6 +165,33 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
   <div class="px-4 py-3 border-t border-slate-200 bg-white grid grid-cols-3 gap-2" style="padding-bottom:calc(.75rem + env(safe-area-inset-bottom))">
     <button id="btnMan" class="btn bg-slate-100 text-slate-700 text-sm">Atur Sudut</button>
     <button id="btnSave" class="btn bg-emerald-500 text-white col-span-2 flex items-center justify-center gap-2"><i data-lucide="save" class="w-4 h-4"></i>Simpan</button>
+  </div>
+</div>
+
+<!-- EDITOR KUNCI JAWABAN -->
+<div id="kEd" class="fixed inset-x-0 bottom-0 top-10 z-40 bg-slate-50 rounded-t-3xl shadow-2xl translate-y-full transition-transform duration-300 flex flex-col">
+  <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+    <h3 id="kEdT" class="font-extrabold">Ujian Baru</h3>
+    <button id="kClose" class="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+  </div>
+  <div class="flex-1 overflow-y-auto px-4 py-3 max-w-lg w-full mx-auto">
+    <div class="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+      <div><label class="text-xs font-bold text-slate-500">ID UJIAN</label><input id="kId" class="inp mt-1" placeholder="mis. PPKN-ASAT-2026"></div>
+      <div><label class="text-xs font-bold text-slate-500">MATA PELAJARAN</label><input id="kMapel" class="inp mt-1" placeholder="mis. PPKn"></div>
+      <div class="grid grid-cols-2 gap-2"><div><label class="text-xs font-bold text-slate-500">BOBOT PG / SOAL</label><input id="kBPG" type="number" min="0" step="any" class="inp mt-1" value="1"></div><div><label class="text-xs font-bold text-slate-500">BOBOT B–S / SOAL</label><input id="kBBS" type="number" min="0" step="any" class="inp mt-1" value="1"></div></div>
+      <p class="text-[11px] text-slate-400">PG Kompleks: tiap jawaban benar bernilai 1 poin (benar keduanya = 2).</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-4 mt-3 space-y-2">
+      <div class="text-xs font-extrabold text-slate-600">ISI CEPAT (opsional)</div>
+      <input id="kqPG" class="inp text-sm" placeholder="PG 1–20: ABCDABCD… (20 huruf)">
+      <input id="kqPGK" class="inp text-sm" placeholder="PGK 21–40: AC BD AB … (pisah spasi)">
+      <input id="kqBS" class="inp text-sm" placeholder="B–S 41–45: BSBBS">
+      <button id="kqGo" type="button" class="btn bg-indigo-50 text-indigo-700 text-sm w-full">Terapkan ke daftar</button>
+    </div>
+    <div id="kRows" class="mt-2 pb-4"></div>
+  </div>
+  <div class="px-4 py-3 border-t border-slate-200 bg-white" style="padding-bottom:calc(.75rem + env(safe-area-inset-bottom))">
+    <button id="kSave" class="btn bg-emerald-500 text-white w-full flex items-center justify-center gap-2"><i data-lucide="save" class="w-4 h-4"></i>Simpan Kunci</button>
   </div>
 </div>
 
