@@ -1,4 +1,4 @@
-const V = 'ljk-v2';
+const V = 'ljk-v3';
 const SHELL = ['./', './index.html', './app.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
