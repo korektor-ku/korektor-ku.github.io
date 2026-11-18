@@ -9,9 +9,9 @@ const HAS_URL = /^https:\/\/script\.google\.com\/.+\/exec$/.test(GAS_URL.trim())
 const DEF = { vmin: 17, vmax: 48, cancel: 50, pad: 10, bsMin: 4, C: 20, Cbs: 10, Cd: 8 };   // hasil kalibrasi pada foto LJK contoh
 const S = {
   url: HAS_URL ? GAS_URL.trim() : LSg('ljk_url', ''), siswa: LSg('ljk_siswa', []), kunci: LSg('ljk_kunci', []), hasil: LSg('ljk_hasil', []),
-  cfg: { ...DEF, ...LSg('ljk_cfg2', {}) }, exam: LSg('ljk_exam', ''), cv: false, rExam: '*', essayMax: LSg('ljk_essaymax', {}), stream: null, cur: null, man: null
+  cfg: { ...DEF, ...LSg('ljk_cfg2', {}) }, exam: LSg('ljk_exam', ''), cv: false, rExam: '*', essayMax: LSg('ljk_essaymax', {}), guru: LSg('ljk_guru', ''), kPend: LSg('ljk_kpend', {}), ed: null, stream: null, cur: null, man: null
 };
-const save = () => { LSs('ljk_siswa', S.siswa); LSs('ljk_kunci', S.kunci); LSs('ljk_hasil', S.hasil); LSs('ljk_cfg2', S.cfg); LSs('ljk_url', S.url); LSs('ljk_exam', S.exam); LSs('ljk_essaymax', S.essayMax) };
+const save = () => { LSs('ljk_siswa', S.siswa); LSs('ljk_kunci', S.kunci); LSs('ljk_hasil', S.hasil); LSs('ljk_cfg2', S.cfg); LSs('ljk_url', S.url); LSs('ljk_exam', S.exam); LSs('ljk_essaymax', S.essayMax); LSs('ljk_kpend', S.kPend) };
 const icons = () => window.lucide && lucide.createIcons();
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const exams = () => [...new Set(S.kunci.map(k => k.ID_Ujian))];
@@ -302,7 +302,8 @@ function renderKunci() {
   fillExam();
   const ks = S.kunci.filter(k => k.ID_Ujian === S.exam).sort((a, b) => a.Nomor_Soal - b.Nomor_Soal);
   const col = { PG: 'bg-indigo-50 text-indigo-700', PGK: 'bg-violet-50 text-violet-700', BS: 'bg-sky-50 text-sky-700' };
-  $('#kInfo').textContent = ks.length ? `${ks[0].Mata_Pelajaran} · ${ks.length} soal` : 'Belum ada kunci. Isi sheet Kunci_Jawaban lalu muat dari Pengaturan.';
+  $('#kInfo').textContent = ks.length ? `${ks[0].Mata_Pelajaran} · ${ks.length} soal${S.kPend[S.exam] ? ' · menunggu sinkron' : ''}` : 'Belum ada kunci. Tekan "+ Ujian Baru" untuk membuat, atau muat dari server di Pengaturan.';
+  $('#kEdit').disabled = $('#kDel').disabled = !S.exam;
   $('#kGrid').innerHTML = ks.map(k => `<div class="rounded-xl py-2 text-center ${col[k.Tipe_Soal] || ''}"><div class="text-[10px] opacity-60">${esc(k.Nomor_Soal)}</div><div class="font-bold text-sm">${esc(k.Kunci)}</div></div>`).join('');
 }
 /* ===== Rekap: tabel, Excel, PDF ===== */
@@ -385,18 +386,23 @@ $('#rList').addEventListener('change', e => {   // input nilai essay manual
   const h = S.hasil.find(x => x.id_ujian + '|' + x.nomor_peserta === k); if (!h) return;
   const v = e.target.value.trim(); h.essay = v === '' ? null : Math.max(0, +v); h.synced = false; reconcile(h); save(); status(); renderRekap();
 });
+function mapelOf() {
+  const ids = S.rExam && S.rExam !== '*' ? [S.rExam] : [...new Set(S.hasil.map(h => h.id_ujian))];
+  return [...new Set(S.kunci.filter(k => ids.includes(k.ID_Ujian)).map(k => k.Mata_Pelajaran))].join(', ') || '-';
+}
 const STT = { benar: 'Benar', salah: 'Salah', sebagian: 'Sebagian', kosong: 'Kosong' };
 function fname(ext) { return `Rekap_${(S.rExam && S.rExam !== '*' ? S.rExam : 'Semua')}_${new Date().toISOString().slice(0, 10)}.${ext}`.replace(/[^\w.\-]+/g, '_') }
 function exportXlsx() {
   if (!window.XLSX) return toast('Pustaka Excel belum termuat — buka sekali saat online', 'warn');
   const R = rekapRows(); if (!R.length) return toast('Belum ada data untuk diunduh', 'warn');
   const nums = Array.from({ length: 45 }, (_, i) => i + 1), ks = kunciRow();
+  const pre = [['REKAP NILAI'], ['Ujian', S.rExam && S.rExam !== '*' ? S.rExam : 'Semua ujian'], ['Mata Pelajaran', mapelOf()], ['Guru', S.guru.trim() || '-'], ['Tanggal cetak', new Date().toLocaleDateString('id-ID')], []];
   const head = ['No', 'Nama', 'No. Peserta', 'Kelas', 'ID Ujian', 'Nilai', 'Benar PG', 'Benar PGK', 'Benar BS', 'Skor PG', 'Skor PGK', 'Skor BS', 'Nilai Essay', 'No. Benar PG', 'No. Benar PGK', 'No. Benar BS', 'Sebagian (PGK)'];
-  const s1 = [[...head, ...nums.map(n => 'J' + n)]];
+  const s1 = [...pre, [...head, ...nums.map(n => 'J' + n)]];
   if (ks) s1.push(['', 'KUNCI', ...Array(head.length - 2).fill(''), ...ks]);   // kunci tepat di atas baris siswa
   R.forEach((r, i) => s1.push([i + 1, r.nama, r.no, r.kelas, r.ujian, +r.nilai.toFixed(2), `${r.ok.PG.length}/${TOT.PG}`, `${r.ok.PGK.length}/${TOT.PGK}`, `${r.ok.BS.length}/${TOT.BS}`,
     r.h.skor_pg, r.h.skor_pgk, r.h.skor_bs, r.h.essay == null ? '' : +r.h.essay, r.ok.PG.join(', '), r.ok.PGK.join(', '), r.ok.BS.join(', '), r.part.join(', '), ...r.ans]));
-  const s2 = [['No', 'Nama', 'No. Peserta', 'Kelas', ...nums.map(n => 'No. ' + n)]];
+  const s2 = [...pre, ['No', 'Nama', 'No. Peserta', 'Kelas', ...nums.map(n => 'No. ' + n)]];
   if (ks) s2.push(['', 'KUNCI', '', '', ...ks]);
   R.forEach((r, i) => s2.push([i + 1, r.nama, r.no, r.kelas, ...r.st.map(s => STT[s])]));
   const wb = XLSX.utils.book_new(), w1 = XLSX.utils.aoa_to_sheet(s1), w2 = XLSX.utils.aoa_to_sheet(s2);
@@ -412,9 +418,10 @@ function exportPdf() {
   if (typeof doc.autoTable !== 'function') return toast('Pustaka tabel PDF belum termuat', 'warn');
   const avg = R.reduce((s, r) => s + r.nilai, 0) / R.length, ex = S.rExam && S.rExam !== '*' ? S.rExam : 'Semua ujian';
   doc.setFontSize(14); doc.text('Rekap Nilai - ' + ex, 10, 12);
-  doc.setFontSize(9); doc.setTextColor(100); doc.text(`${R.length} siswa  |  rata-rata ${avg.toFixed(1)}  |  dicetak ${new Date().toLocaleString('id-ID')}`, 10, 17);
+  doc.setFontSize(9); doc.setTextColor(100); doc.text(`Mata pelajaran: ${mapelOf()}  |  Guru: ${S.guru.trim() || '-'}`, 10, 17);
+  doc.text(`${R.length} siswa  |  rata-rata ${avg.toFixed(1)}  |  dicetak ${new Date().toLocaleString('id-ID')}`, 10, 21);
   doc.autoTable({
-    startY: 21, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.6 }, headStyles: { fillColor: [79, 70, 229] },
+    startY: 25, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.6 }, headStyles: { fillColor: [79, 70, 229] },
     head: [['No', 'Nama', 'No. Peserta', 'Kelas', 'Nilai', 'Benar PG', 'Benar PGK', 'Benar BS', 'Essay', 'Sebagian PGK']],
     body: R.map((r, i) => [i + 1, r.nama, r.no, r.kelas, r.nilai.toFixed(1), `${r.ok.PG.length}/${TOT.PG}`, `${r.ok.PGK.length}/${TOT.PGK}`, `${r.ok.BS.length}/${TOT.BS}`, r.h.essay == null ? '-' : r.h.essay, r.part.length]),
     columnStyles: { 0: { cellWidth: 10 }, 4: { fontStyle: 'bold', halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' }, 9: { halign: 'center' } }
@@ -438,6 +445,76 @@ $('#rList').onclick = e => {
   const b = e.target.closest('[data-del]'); if (!b || !confirm('Hapus hasil ini?')) return;
   S.hasil = S.hasil.filter(h => h.id_ujian + '|' + h.nomor_peserta !== b.dataset.del); save(); status(); renderRekap();
 };
+/* ===== Editor kunci jawaban (input langsung dari web) ===== */
+const EDL = n => n > 40 ? ['B', 'S'] : ['A', 'B', 'C', 'D'];
+function openEd(id) {
+  const rows = id ? S.kunci.filter(k => k.ID_Ujian === id) : [], k = {};
+  rows.forEach(r => { k[+r.Nomor_Soal] = String(r.Kunci).split(',').map(s => s.trim().toUpperCase()).filter(Boolean) });
+  S.ed = { isNew: !id, k };
+  $('#kId').value = id || ''; $('#kId').disabled = !!id; $('#kMapel').value = rows[0] ? rows[0].Mata_Pelajaran : '';
+  const bp = rows.find(r => r.Tipe_Soal === 'PG'), bb = rows.find(r => r.Tipe_Soal === 'BS');
+  $('#kBPG').value = bp ? +bp.Bobot : 1; $('#kBBS').value = bb ? +bb.Bobot : 1;
+  ['#kqPG', '#kqPGK', '#kqBS'].forEach(i => $(i).value = '');
+  $('#kEdT').textContent = id ? 'Ubah Kunci Jawaban' : 'Ujian Baru';
+  renderEd(); $('#kEd').classList.remove('translate-y-full'); icons();
+}
+function renderEd() {
+  const sec = (t, c, txt) => `<div class="text-xs font-extrabold ${c} mt-4 mb-1">${t} <span class="font-medium text-slate-400">${txt}</span></div>`;
+  let h = '';
+  for (let n = 1; n <= 45; n++) {
+    if (n === 1) h += sec('PILIHAN GANDA 1–20', 'text-indigo-600', '· pilih 1 jawaban');
+    if (n === 21) h += sec('PG KOMPLEKS 21–40', 'text-violet-600', '· pilih semua jawaban benar (biasanya 2)');
+    if (n === 41) h += sec('BENAR–SALAH 41–45', 'text-sky-600', '· B atau S');
+    h += `<div class="flex items-center gap-2 mb-1.5"><span class="w-7 text-xs font-bold text-slate-400 text-right">${n}</span>${EDL(n).map(l => `<button type="button" data-k="${n}" data-l="${l}" class="kb ${S.ed.k[n] && S.ed.k[n].includes(l) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  }
+  $('#kRows').innerHTML = h;
+}
+$('#kRows').onclick = e => {
+  const b = e.target.closest('.kb'); if (!b) return;
+  const n = +b.dataset.k, l = b.dataset.l, cur = S.ed.k[n] || [], i = cur.indexOf(l);
+  if (n > 20 && n <= 40) { i >= 0 ? cur.splice(i, 1) : cur.push(l); cur.sort(); S.ed.k[n] = cur; b.classList.toggle('on', i < 0) }   // PGK: boleh >1
+  else { S.ed.k[n] = i >= 0 ? [] : [l]; b.parentElement.querySelectorAll('.kb').forEach(x => x.classList.toggle('on', x === b && i < 0)) }
+};
+$('#kqGo').onclick = () => {   // isi cepat: PG "ABCD...", PGK "AC BD AB ..." (pisah spasi), B/S "BSBBS"
+  const pg = $('#kqPG').value.toUpperCase().match(/[A-D]/g) || [], bs = $('#kqBS').value.toUpperCase().match(/[BS]/g) || [];
+  const pk = $('#kqPGK').value.toUpperCase().split(/[\s;]+/).map(g => [...new Set(g.match(/[A-D]/g) || [])].sort()).filter(g => g.length);
+  pg.slice(0, 20).forEach((l, i) => S.ed.k[i + 1] = [l]); pk.slice(0, 20).forEach((g, i) => S.ed.k[21 + i] = g); bs.slice(0, 5).forEach((l, i) => S.ed.k[41 + i] = [l]);
+  renderEd(); toast(`Terisi: ${Math.min(pg.length, 20)} PG, ${Math.min(pk.length, 20)} PGK, ${Math.min(bs.length, 5)} B/S`, 'info');
+};
+$('#kSave').onclick = () => {
+  const id = $('#kId').value.trim(), mapel = $('#kMapel').value.trim();
+  if (!id || !mapel) return toast('Isi ID Ujian dan Mata Pelajaran', 'warn');
+  if (S.ed.isNew && exams().includes(id)) return toast('ID Ujian sudah ada — pilih ujiannya lalu tekan Ubah Kunci', 'warn');
+  const miss = []; for (let n = 1; n <= 45; n++) if (!(S.ed.k[n] && S.ed.k[n].length)) miss.push(n);
+  if (miss.length) return toast('Kunci belum lengkap: no. ' + miss.slice(0, 8).join(', ') + (miss.length > 8 ? ` (+${miss.length - 8})` : ''), 'warn');
+  const bpg = +$('#kBPG').value || 1, bbs = +$('#kBBS').value || 1;
+  const rows = Array.from({ length: 45 }, (_, i) => {
+    const n = i + 1, t = n <= 20 ? 'PG' : n <= 40 ? 'PGK' : 'BS';
+    return { ID_Ujian: id, Mata_Pelajaran: mapel, Nomor_Soal: String(n), Tipe_Soal: t, Kunci: S.ed.k[n].join(','), Bobot: String(t === 'PG' ? bpg : t === 'BS' ? bbs : 1) };
+  });
+  S.kunci = S.kunci.filter(k => k.ID_Ujian !== id).concat(rows); S.exam = id; S.kPend[id] = 'save'; save();
+  $('#kEd').classList.add('translate-y-full'); fillExam(); renderKunci(); toast('Kunci disimpan'); pushKunci();
+};
+$('#kClose').onclick = () => $('#kEd').classList.add('translate-y-full');
+$('#kNew').onclick = () => openEd(''); $('#kEdit').onclick = () => S.exam && openEd(S.exam);
+$('#kDel').onclick = () => {
+  if (!S.exam || !confirm(`Hapus kunci ujian "${S.exam}"? Hasil koreksi yang sudah tersimpan tidak ikut terhapus.`)) return;
+  const id = S.exam; S.kunci = S.kunci.filter(k => k.ID_Ujian !== id); S.kPend[id] = 'del'; S.exam = exams()[0] || '';
+  save(); fillExam(); renderKunci(); toast('Kunci dihapus'); pushKunci();
+};
+async function pushKunci() {   // kirim perubahan kunci (simpan/hapus) ke Apps Script
+  if (!S.url || !navigator.onLine || !Object.keys(S.kPend).length) return;
+  for (const id of Object.keys(S.kPend)) {
+    try {
+      await api({ method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(S.kPend[id] === 'del' ? { action: 'deleteKunci', id_ujian: id } : { action: 'saveKunci', id_ujian: id, kunci: S.kunci.filter(k => k.ID_Ujian === id) }) });
+      delete S.kPend[id]; save(); toast(`Kunci "${id}" tersinkron`);
+    } catch (e) { toast('Kunci belum terkirim: ' + e.message, 'warn'); break }
+  }
+  renderKunci();
+}
+/* ===== Nama guru ===== */
+$('#rGuru').value = S.guru; $('#rGuru').oninput = e => { S.guru = e.target.value; LSs('ljk_guru', S.guru) };
+
 const FIELDS = [['vmin', 'Silang valid min (%)'], ['vmax', 'Silang valid maks (%)'], ['cancel', 'Coretan ralat > (%)'], ['pad', 'Padding PG/PGK (%)'], ['bsMin', 'Lingkaran B/S min (%)'], ['C', 'Konstanta C baca PG'], ['Cbs', 'Konstanta C baca B/S'], ['Cd', 'Konstanta C deteksi tabel']];
 function renderSet() {
   $('#url').value = S.url;
@@ -464,15 +541,16 @@ async function api(opt) {
 }
 async function pull(silent) {
   if (!S.url) return toast('Atur URL Web App dulu', 'warn');
+  await pushKunci();
   try {
     const j = await api();
-    S.siswa = j.siswa; S.kunci = j.kunci; if (!exams().includes(S.exam)) S.exam = exams()[0] || '';
+    S.siswa = j.siswa; S.kunci = j.kunci.filter(k => !S.kPend[k.ID_Ujian]).concat(S.kunci.filter(k => S.kPend[k.ID_Ujian] === 'save')); if (!exams().includes(S.exam)) S.exam = exams()[0] || '';
     save(); fillExam(); renderKunci(); if (silent !== true) toast(`Dimuat: ${j.siswa.length} siswa, ${j.kunci.length} butir kunci`);
   } catch (e) { toast('Gagal memuat: ' + e.message, 'err') }
 }
 async function sync(silent) {
   if (!S.url) return silent || toast('Atur URL Web App dulu', 'warn');
-  S.hasil.forEach(reconcile); const p = S.hasil.filter(h => !h.synced); if (!p.length) return silent || toast('Tidak ada antrean', 'info');
+  await pushKunci(); S.hasil.forEach(reconcile); const p = S.hasil.filter(h => !h.synced); if (!p.length) return silent || toast('Tidak ada antrean', 'info');
   try {
     const j = await api({ method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'saveResults', data: p.map(({ synced, ...x }) => x) }) });
     p.forEach(h => h.synced = true); save(); toast(`${j.saved} data tersinkron`);
