@@ -29,6 +29,8 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
 @keyframes sc{0%,100%{top:8%}50%{top:92%}}
 .inp{width:100%;border:1px solid #E2E8F0;border-radius:14px;padding:10px 12px;font-weight:600;background:#fff;outline:none}
 .inp:focus{border-color:#4F46E5;box-shadow:0 0 0 3px #E0E7FF}
+.cn,.scan{pointer-events:none}
+@keyframes fp{0%{transform:scale(1.6);opacity:0}35%{opacity:1}100%{transform:scale(1);opacity:1}}.fpulse{animation:fp .3s ease-out}
 .kb{min-width:46px;height:40px;border-radius:12px;font-weight:700;border:1px solid #E2E8F0;background:#fff;color:#475569}.kb.on{background:#4F46E5;border-color:#4F46E5;color:#fff}
 .btn:disabled{opacity:.4}
 .btn{font-weight:700;border-radius:16px;padding:12px 16px}
@@ -55,13 +57,16 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
   <!-- 1. SCAN -->
   <section data-sec="scan">
     <div class="mb-3"><label class="text-xs font-bold text-slate-500">UJIAN AKTIF</label><select class="examSel inp mt-1"></select></div>
-    <div class="relative rounded-2xl overflow-hidden bg-slate-900 shadow-lg" style="aspect-ratio:3/4">
+    <div id="camBox" class="relative rounded-2xl overflow-hidden bg-slate-900 shadow-lg" style="aspect-ratio:3/4">
       <video id="vid" class="absolute inset-0 w-full h-full object-cover" autoplay playsinline muted></video>
       <div class="cn tl"></div><div class="cn tr"></div><div class="cn bl"></div><div class="cn br"></div>
       <div class="scan"></div>
+      <div id="fring" class="hidden absolute w-16 h-16 border-2 border-amber-300 rounded-2xl pointer-events-none z-10"></div>
+      <button id="btnTorch" type="button" aria-label="Flash" class="hidden absolute top-3 right-3 z-10 w-11 h-11 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur"><i data-lucide="zap-off" class="w-5 h-5"></i></button>
+      <input id="zoom" type="range" aria-label="Zoom" class="hidden absolute bottom-4 left-12 right-12 z-10 accent-indigo-400">
       <div id="busy" class="hidden absolute inset-0 bg-slate-900/70 flex items-center justify-center text-white font-bold">Memproses…</div>
     </div>
-    <p class="text-xs text-slate-500 text-center mt-3">Posisikan seluruh LJK di dalam bingkai, pencahayaan merata, lalu ambil foto.</p>
+    <p class="text-xs text-slate-500 text-center mt-3">Posisikan seluruh LJK di dalam bingkai, ketuk layar untuk fokus, lalu ambil foto.</p>
     <div class="flex items-center justify-center gap-6 mt-4">
       <label class="w-14 h-14 rounded-2xl bg-white shadow flex items-center justify-center text-indigo-600 cursor-pointer"><i data-lucide="image-up"></i><input id="file" type="file" accept="image/*" class="hidden"></label>
       <button id="btnCap" class="w-20 h-20 rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300 flex items-center justify-center active:scale-95 transition"><i data-lucide="camera" class="w-8 h-8"></i></button>
