@@ -9,7 +9,7 @@ const HAS_URL = /^https:\/\/script\.google\.com\/.+\/exec$/.test(GAS_URL.trim())
 const DEF = { vmin: 17, vmax: 48, cancel: 50, pad: 10, bsMin: 4, C: 20, Cbs: 10, Cd: 8 };   // hasil kalibrasi pada foto LJK contoh
 const S = {
   url: HAS_URL ? GAS_URL.trim() : LSg('ljk_url', ''), siswa: LSg('ljk_siswa', []), kunci: LSg('ljk_kunci', []), hasil: LSg('ljk_hasil', []),
-  cfg: { ...DEF, ...LSg('ljk_cfg2', {}) }, exam: LSg('ljk_exam', ''), cv: false, stream: null, cur: null, man: null
+  cfg: { ...DEF, ...LSg('ljk_cfg2', {}) }, exam: LSg('ljk_exam', ''), cv: false, rExam: '*', stream: null, cur: null, man: null
 };
 const save = () => { LSs('ljk_siswa', S.siswa); LSs('ljk_kunci', S.kunci); LSs('ljk_hasil', S.hasil); LSs('ljk_cfg2', S.cfg); LSs('ljk_url', S.url); LSs('ljk_exam', S.exam) };
 const icons = () => window.lucide && lucide.createIcons();
@@ -304,22 +304,104 @@ function renderKunci() {
   $('#kInfo').textContent = ks.length ? `${ks[0].Mata_Pelajaran} · ${ks.length} soal` : 'Belum ada kunci. Isi sheet Kunci_Jawaban lalu muat dari Pengaturan.';
   $('#kGrid').innerHTML = ks.map(k => `<div class="rounded-xl py-2 text-center ${col[k.Tipe_Soal] || ''}"><div class="text-[10px] opacity-60">${esc(k.Nomor_Soal)}</div><div class="font-bold text-sm">${esc(k.Kunci)}</div></div>`).join('');
 }
+/* ===== Rekap: tabel, Excel, PDF ===== */
+const tp = n => n <= 20 ? 'PG' : n <= 40 ? 'PGK' : 'BS', TOT = { PG: 20, PGK: 20, BS: 5 };
+const norm = s => String(s || '').split(',').map(t => t.trim()).filter(Boolean).sort().join(',');
+function analyze(h) {
+  const d = h.detail || {}, ans = [], st = [], ok = { PG: [], PGK: [], BS: [] }, part = [];
+  for (let n = 1; n <= 45; n++) {
+    const x = d[n] || { j: '', k: '', s: 0 }, j = x.j || '';
+    const s = !j ? 'kosong' : norm(j) === norm(x.k) ? 'benar' : x.s > 0 ? 'sebagian' : 'salah';
+    ans.push(j); st.push(s); if (s === 'benar') ok[tp(n)].push(n); if (s === 'sebagian') part.push(n);
+  }
+  return { h, nama: h.nama_siswa || '(tanpa nama)', no: String(h.nomor_peserta), kelas: h.kelas || '', nilai: h.total_nilai, ujian: h.id_ujian, ans, st, ok, part };
+}
+function rekapRows() {
+  const ex = S.rExam || '*';
+  return S.hasil.filter(h => ex === '*' || h.id_ujian === ex).map(analyze)
+    .sort((a, b) => a.kelas.localeCompare(b.kelas) || a.nama.localeCompare(b.nama));
+}
+const ST_CLS = { benar: 'bg-emerald-50 text-emerald-700', salah: 'bg-rose-50 text-rose-600', sebagian: 'bg-amber-50 text-amber-600', kosong: 'text-slate-300' };
 function renderRekap() {
-  const L = [...S.hasil].sort((a, b) => b.timestamp.localeCompare(a.timestamp)), n = L.length;
-  const avg = n ? L.reduce((s, h) => s + h.total_nilai, 0) / n : 0;
-  $('#rStat').innerHTML = [['Siswa', n], ['Rata-rata', avg.toFixed(1)], ['Tertinggi', n ? Math.max(...L.map(h => h.total_nilai)).toFixed(1) : '–']]
+  const exs = [...new Set(S.hasil.map(h => h.id_ujian))];
+  if (S.rExam !== '*' && !exs.includes(S.rExam)) S.rExam = '*';
+  $('#rExam').innerHTML = `<option value="*">Semua ujian</option>` + exs.map(e => `<option ${e === S.rExam ? 'selected' : ''}>${esc(e)}</option>`).join('');
+  $('#rExam').onchange = e => { S.rExam = e.target.value; renderRekap() };
+  const R = rekapRows(), n = R.length, avg = n ? R.reduce((s, r) => s + r.nilai, 0) / n : 0;
+  $('#rStat').innerHTML = [['Siswa', n], ['Rata-rata', avg.toFixed(1)], ['Tertinggi', n ? Math.max(...R.map(r => r.nilai)).toFixed(1) : '–']]
     .map(([a, b]) => `<div class="bg-white rounded-2xl p-3 shadow-sm text-center"><div class="text-xs text-slate-500">${a}</div><div class="text-xl font-extrabold text-indigo-600">${b}</div></div>`).join('');
-  $('#rList').innerHTML = L.map(h => {
-    const c = h.total_nilai >= 75 ? 'text-emerald-600' : h.total_nilai >= 50 ? 'text-amber-500' : 'text-rose-500';
-    return `<div class="bg-white rounded-2xl shadow-sm p-3 flex items-center gap-3">
-      <div class="text-2xl font-extrabold w-16 text-center ${c}">${h.total_nilai.toFixed(0)}</div>
-      <div class="flex-1 min-w-0"><div class="font-bold truncate">${esc(h.nama_siswa || '(tanpa nama)')}</div>
-      <div class="text-xs text-slate-500">${esc(h.nomor_peserta)} · ${esc(h.kelas)} · ${esc(h.id_ujian)}</div></div>
-      <span class="pill ${h.synced ? 'ok' : 'warn'}"><span>${h.synced ? 'Terkirim' : 'Antre'}</span></span>
-      <button data-del="${esc(h.id_ujian)}|${esc(h.nomor_peserta)}" class="text-slate-400 p-1"><i data-lucide="trash-2" class="w-4 h-4 pointer-events-none"></i></button></div>`;
-  }).join('') || '<p class="text-center text-slate-400 py-10">Belum ada hasil koreksi.</p>';
+  if (!n) { $('#rList').innerHTML = '<p class="text-center text-slate-400 py-10">Belum ada hasil koreksi.</p>'; return icons() }
+  const th = 'px-2 py-2 font-bold text-slate-500 whitespace-nowrap bg-slate-50';
+  const nums = Array.from({ length: 45 }, (_, i) => `<th class="px-1 py-2 font-bold text-center w-7 min-w-[28px] bg-slate-50 ${i < 20 ? 'text-indigo-500' : i < 40 ? 'text-violet-500' : 'text-sky-500'}">${i + 1}</th>`).join('');
+  $('#rList').innerHTML = `<div class="overflow-x-auto rounded-2xl bg-white shadow-sm"><table class="text-xs border-collapse w-max min-w-full">
+    <thead><tr><th class="${th} text-left">No</th><th class="${th} text-left sticky left-0 z-10">Nama</th><th class="${th} text-left">No. Peserta</th><th class="${th} text-left">Kelas</th><th class="${th} text-center">Nilai</th>
+    <th class="${th} text-center">PG</th><th class="${th} text-center">PGK</th><th class="${th} text-center">BS</th><th class="${th} text-center">Status</th>${nums}<th class="${th}"></th></tr></thead>
+    <tbody>${R.map((r, i) => {
+      const c = r.nilai >= 75 ? 'text-emerald-600' : r.nilai >= 50 ? 'text-amber-500' : 'text-rose-500', cnt = t => `${r.ok[t].length}/${TOT[t]}`;
+      return `<tr class="border-t border-slate-100"><td class="px-2 py-2 text-slate-400">${i + 1}</td>
+      <td class="px-2 py-2 font-bold whitespace-nowrap sticky left-0 bg-white z-10 max-w-[150px] truncate">${esc(r.nama)}</td>
+      <td class="px-2 py-2 whitespace-nowrap">${esc(r.no)}</td><td class="px-2 py-2 whitespace-nowrap">${esc(r.kelas)}</td>
+      <td class="px-2 py-2 text-center font-extrabold text-sm ${c}">${r.nilai.toFixed(1)}</td>
+      <td class="px-2 py-2 text-center font-semibold text-indigo-600">${cnt('PG')}</td><td class="px-2 py-2 text-center font-semibold text-violet-600">${cnt('PGK')}</td><td class="px-2 py-2 text-center font-semibold text-sky-600">${cnt('BS')}</td>
+      <td class="px-2 py-2 text-center"><span class="pill ${r.h.synced ? 'ok' : 'warn'}"><span>${r.h.synced ? 'Terkirim' : 'Antre'}</span></span></td>
+      ${r.ans.map((a, k) => `<td class="px-0.5 py-1 text-center font-bold ${ST_CLS[r.st[k]]}" title="No. ${k + 1}">${a ? esc(a.replace(/,/g, '')) : '-'}</td>`).join('')}
+      <td class="px-2 py-2"><button data-del="${esc(r.ujian)}|${esc(r.no)}" class="text-slate-400"><i data-lucide="trash-2" class="w-4 h-4 pointer-events-none"></i></button></td></tr>`;
+    }).join('')}</tbody></table></div>`;
   icons();
 }
+const STT = { benar: 'Benar', salah: 'Salah', sebagian: 'Sebagian', kosong: 'Kosong' };
+function fname(ext) { return `Rekap_${(S.rExam && S.rExam !== '*' ? S.rExam : 'Semua')}_${new Date().toISOString().slice(0, 10)}.${ext}`.replace(/[^\w.\-]+/g, '_') }
+function kunciRow() {   // kunci ujian terpilih (array 45) bila hanya satu ujian
+  if (!S.rExam || S.rExam === '*') return null;
+  const k = Array(45).fill('');
+  S.kunci.filter(x => x.ID_Ujian === S.rExam).forEach(x => { const n = +x.Nomor_Soal; if (n >= 1 && n <= 45) k[n - 1] = String(x.Kunci) });
+  return k.some(Boolean) ? k : null;
+}
+function exportXlsx() {
+  if (!window.XLSX) return toast('Pustaka Excel belum termuat — buka sekali saat online', 'warn');
+  const R = rekapRows(); if (!R.length) return toast('Belum ada data untuk diunduh', 'warn');
+  const nums = Array.from({ length: 45 }, (_, i) => i + 1), ks = kunciRow();
+  const s1 = [['No', 'Nama', 'No. Peserta', 'Kelas', 'ID Ujian', 'Nilai', 'Benar PG', 'Benar PGK', 'Benar BS', 'No. Benar PG', 'No. Benar PGK', 'No. Benar BS', 'Sebagian (PGK)', ...nums.map(n => 'J' + n)]];
+  if (ks) s1.push(['', 'KUNCI', '', '', '', '', '', '', '', '', '', '', '', ...ks]);
+  R.forEach((r, i) => s1.push([i + 1, r.nama, r.no, r.kelas, r.ujian, +r.nilai.toFixed(2), `${r.ok.PG.length}/${TOT.PG}`, `${r.ok.PGK.length}/${TOT.PGK}`, `${r.ok.BS.length}/${TOT.BS}`,
+    r.ok.PG.join(', '), r.ok.PGK.join(', '), r.ok.BS.join(', '), r.part.join(', '), ...r.ans]));
+  const s2 = [['No', 'Nama', 'No. Peserta', 'Kelas', ...nums.map(n => 'No. ' + n)]];
+  R.forEach((r, i) => s2.push([i + 1, r.nama, r.no, r.kelas, ...r.st.map(s => STT[s])]));
+  const wb = XLSX.utils.book_new(), w1 = XLSX.utils.aoa_to_sheet(s1), w2 = XLSX.utils.aoa_to_sheet(s2);
+  w1['!cols'] = [{ wch: 4 }, { wch: 26 }, { wch: 12 }, { wch: 8 }, { wch: 16 }, { wch: 8 }, { wch: 9 }, { wch: 10 }, { wch: 9 }, { wch: 28 }, { wch: 28 }, { wch: 14 }, { wch: 14 }, ...nums.map(() => ({ wch: 6 }))];
+  w2['!cols'] = [{ wch: 4 }, { wch: 26 }, { wch: 12 }, { wch: 8 }, ...nums.map(() => ({ wch: 9 }))];
+  XLSX.utils.book_append_sheet(wb, w1, 'Rekap'); XLSX.utils.book_append_sheet(wb, w2, 'Keterangan Jawaban');
+  XLSX.writeFile(wb, fname('xlsx')); toast('File Excel diunduh');
+}
+function exportPdf() {
+  const J = window.jspdf; if (!J || !J.jsPDF) return toast('Pustaka PDF belum termuat — buka sekali saat online', 'warn');
+  const R = rekapRows(); if (!R.length) return toast('Belum ada data untuk diunduh', 'warn');
+  const doc = new J.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  if (typeof doc.autoTable !== 'function') return toast('Pustaka tabel PDF belum termuat', 'warn');
+  const avg = R.reduce((s, r) => s + r.nilai, 0) / R.length, ex = S.rExam && S.rExam !== '*' ? S.rExam : 'Semua ujian';
+  doc.setFontSize(14); doc.text('Rekap Nilai - ' + ex, 10, 12);
+  doc.setFontSize(9); doc.setTextColor(100); doc.text(`${R.length} siswa  |  rata-rata ${avg.toFixed(1)}  |  dicetak ${new Date().toLocaleString('id-ID')}`, 10, 17);
+  doc.autoTable({
+    startY: 21, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.6 }, headStyles: { fillColor: [79, 70, 229] },
+    head: [['No', 'Nama', 'No. Peserta', 'Kelas', 'Nilai', 'Benar PG', 'Benar PGK', 'Benar BS', 'Sebagian PGK']],
+    body: R.map((r, i) => [i + 1, r.nama, r.no, r.kelas, r.nilai.toFixed(1), `${r.ok.PG.length}/${TOT.PG}`, `${r.ok.PGK.length}/${TOT.PGK}`, `${r.ok.BS.length}/${TOT.BS}`, r.part.length]),
+    columnStyles: { 0: { cellWidth: 10 }, 4: { fontStyle: 'bold', halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center' }, 7: { halign: 'center' }, 8: { halign: 'center' } }
+  });
+  // Halaman keterangan jawaban per nomor (warna: hijau benar, merah salah, kuning sebagian)
+  const ks = kunciRow(), rows = [...(ks ? [{ st: null, cells: ['KUNCI', ...ks.map(k => k.replace(/,/g, ''))] }] : []),
+    ...R.map(r => ({ st: r.st, cells: [r.nama, ...r.ans.map(a => a ? a.replace(/,/g, '') : '-')] }))];
+  doc.addPage(); doc.setFontSize(12); doc.setTextColor(0); doc.text('Keterangan Jawaban per Nomor', 6, 10);
+  doc.setFontSize(7); doc.setTextColor(100); doc.text('Hijau = benar, merah = salah, kuning = sebagian (PGK), - = kosong. No. 1-20 PG, 21-40 PGK, 41-45 Benar-Salah.', 6, 14);
+  const cs = { 0: { halign: 'left', cellWidth: 30 } }; for (let i = 1; i <= 45; i++) cs[i] = { cellWidth: 5.5 };
+  const COL = { benar: [209, 250, 229], salah: [254, 226, 226], sebagian: [254, 243, 199], kosong: [241, 245, 249] };
+  doc.autoTable({
+    startY: 17, theme: 'grid', margin: { left: 6, right: 6 }, styles: { fontSize: 5, cellPadding: 0.5, halign: 'center', overflow: 'hidden' }, columnStyles: cs,
+    headStyles: { fillColor: [79, 70, 229], fontSize: 5 }, head: [['Nama', ...Array.from({ length: 45 }, (_, i) => String(i + 1))]], body: rows.map(r => r.cells),
+    didParseCell: d => { if (d.section === 'body' && d.column.index > 0) { const r = rows[d.row.index]; if (r.st) d.cell.styles.fillColor = COL[r.st[d.column.index - 1]]; else { d.cell.styles.fillColor = [224, 231, 255]; d.cell.styles.fontStyle = 'bold' } } }
+  });
+  doc.save(fname('pdf')); toast('File PDF diunduh');
+}
+$('#btnXlsx').onclick = exportXlsx; $('#btnPdf').onclick = exportPdf;
 $('#rList').onclick = e => {
   const b = e.target.closest('[data-del]'); if (!b || !confirm('Hapus hasil ini?')) return;
   S.hasil = S.hasil.filter(h => h.id_ujian + '|' + h.nomor_peserta !== b.dataset.del); save(); status(); renderRekap();
