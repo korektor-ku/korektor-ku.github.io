@@ -29,6 +29,16 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
 @keyframes sc{0%,100%{top:8%}50%{top:92%}}
 .inp{width:100%;border:1px solid #E2E8F0;border-radius:14px;padding:10px 12px;font-weight:600;background:#fff;outline:none}
 .inp:focus{border-color:#4F46E5;box-shadow:0 0 0 3px #E0E7FF}
+/* Menu garis tiga */
+.bar{display:block;width:20px;height:2px;border-radius:2px;background:currentColor;transition:transform .3s ease,opacity .2s ease}
+#btnMenu.open .b1{transform:translateY(6px) rotate(45deg)}#btnMenu.open .b2{opacity:0;transform:scaleX(0)}#btnMenu.open .b3{transform:translateY(-6px) rotate(-45deg)}
+#menu{position:absolute;right:0;top:calc(100% + 10px);width:210px;padding:8px;border-radius:20px;background:rgba(255,255,255,.97);border:1px solid #E2E8F0;box-shadow:0 20px 40px -12px rgba(15,23,42,.3);transform-origin:top right;opacity:0;visibility:hidden;pointer-events:none;transform:scale(.8) translateY(-10px);transition:opacity .2s ease,transform .28s cubic-bezier(.2,.9,.3,1.25),visibility 0s linear .28s}
+#menu.open{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition-delay:0s}
+#menu .mi{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:14px;font-size:14px;font-weight:700;opacity:0;transform:translateY(-10px);transition:opacity .22s ease,transform .28s ease,background .15s}
+#menu.open .mi{opacity:1;transform:none}
+#menu.open .mi:nth-child(1){transition-delay:.04s}#menu.open .mi:nth-child(2){transition-delay:.09s}#menu.open .mi:nth-child(3){transition-delay:.14s}#menu.open .mi:nth-child(4){transition-delay:.19s}
+#menuBg{position:fixed;inset:0;z-index:20;background:rgba(15,23,42,.28);opacity:0;pointer-events:none;transition:opacity .25s}
+#menuBg.open{opacity:1;pointer-events:auto}
 .cn,.scan{pointer-events:none}
 @keyframes fp{0%{transform:scale(1.6);opacity:0}35%{opacity:1}100%{transform:scale(1);opacity:1}}.fpulse{animation:fp .3s ease-out}
 .kb{min-width:46px;height:40px;border-radius:12px;font-weight:700;border:1px solid #E2E8F0;background:#fff;color:#475569}.kb.on{background:#4F46E5;border-color:#4F46E5;color:#fff}
@@ -40,9 +50,20 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
 
 <header class="glass sticky top-0 z-30 border-b border-slate-100" style="padding-top:env(safe-area-inset-top)">
   <div class="max-w-lg mx-auto px-4 py-3">
-    <div class="flex items-center gap-2 mb-2">
-      <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><i data-lucide="scan-line" class="w-4 h-4"></i></div>
-      <h1 class="font-extrabold text-lg">Scan LJK</h1>
+    <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><i data-lucide="scan-line" class="w-4 h-4"></i></div>
+        <h1 class="font-extrabold text-lg">Scan LJK</h1>
+      </div>
+      <div class="relative">
+        <button id="btnMenu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="menu" class="w-10 h-10 rounded-xl bg-white shadow-sm border border-slate-100 text-slate-700 flex flex-col items-center justify-center gap-1 active:scale-95 transition"><span class="bar b1"></span><span class="bar b2"></span><span class="bar b3"></span></button>
+        <div id="menu" role="menu">
+          <button data-tab="scan" role="menuitem" class="mi active"><i data-lucide="scan-line" class="w-5 h-5"></i>Scan LJK</button>
+          <button data-tab="kunci" role="menuitem" class="mi"><i data-lucide="key-round" class="w-5 h-5"></i>Kunci</button>
+          <button data-tab="rekap" role="menuitem" class="mi"><i data-lucide="bar-chart-3" class="w-5 h-5"></i>Rekap</button>
+          <button data-tab="set" role="menuitem" class="mi"><i data-lucide="settings" class="w-5 h-5"></i>Atur</button>
+        </div>
+      </div>
     </div>
     <div class="flex gap-2 flex-wrap">
       <span id="pCv" class="pill wait"><span>Memuat OpenCV</span></span>
@@ -52,7 +73,7 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
   </div>
 </header>
 
-<main class="max-w-lg mx-auto px-4 pt-4 pb-32">
+<main class="max-w-lg mx-auto px-4 pt-4 pb-10">
 
   <!-- 1. SCAN -->
   <section data-sec="scan">
@@ -137,13 +158,7 @@ body{background:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;-webkit-tap-h
   </section>
 </main>
 
-<!-- NAV -->
-<nav class="glass fixed bottom-4 inset-x-4 max-w-md mx-auto z-30 rounded-3xl shadow-xl shadow-slate-300/50 border border-white p-2 grid grid-cols-4 gap-1" style="margin-bottom:env(safe-area-inset-bottom)">
-  <button data-tab="scan" class="active rounded-2xl py-2 flex flex-col items-center text-[11px] font-bold"><i data-lucide="scan-line" class="w-5 h-5"></i>Scan LJK</button>
-  <button data-tab="kunci" class="rounded-2xl py-2 flex flex-col items-center text-[11px] font-bold"><i data-lucide="key-round" class="w-5 h-5"></i>Kunci</button>
-  <button data-tab="rekap" class="rounded-2xl py-2 flex flex-col items-center text-[11px] font-bold"><i data-lucide="bar-chart-3" class="w-5 h-5"></i>Rekap</button>
-  <button data-tab="set" class="rounded-2xl py-2 flex flex-col items-center text-[11px] font-bold"><i data-lucide="settings" class="w-5 h-5"></i>Atur</button>
-</nav>
+<div id="menuBg"></div>
 
 <!-- SHEET VERIFIKASI -->
 <div id="sheet" class="fixed inset-x-0 bottom-0 top-10 z-40 bg-slate-50 rounded-t-3xl shadow-2xl translate-y-full transition-transform duration-300 flex flex-col">
