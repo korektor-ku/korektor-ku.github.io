@@ -39,7 +39,13 @@ function tab(n) {
   if (n === 'kunci') renderKunci(); if (n === 'rekap') renderRekap(); if (n === 'set') renderSet();
   icons();
 }
-$$('[data-tab]').forEach(b => b.onclick = () => tab(b.dataset.tab));
+function menu(open) {   // buka/tutup menu garis tiga
+  const on = open === undefined ? !$('#menu').classList.contains('open') : open;
+  ['#menu', '#menuBg', '#btnMenu'].forEach(s => $(s).classList.toggle('open', on)); $('#btnMenu').setAttribute('aria-expanded', on);
+}
+$$('[data-tab]').forEach(b => b.onclick = () => { tab(b.dataset.tab); menu(false) });
+$('#btnMenu').onclick = () => menu(); $('#menuBg').onclick = () => menu(false);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') menu(false) });
 
 /* ===== Kamera & Upload ===== */
 /* ===== Kamera: ketuk untuk fokus, flash (torch), zoom, foto resolusi penuh ===== */
